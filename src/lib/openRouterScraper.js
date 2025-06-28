@@ -1,15 +1,17 @@
-// Simplified OpenRouter Model Scraper - Focus on working connection
+// Enhanced OpenRouter Model Scraper - Multiple strategies for maximum compatibility
 class OpenRouterModelScraper {
   constructor() {
     this.baseUrl = 'https://openrouter.ai/api/v1';
     this.modelsEndpoint = '/models';
     this.cache = new Map();
     this.cacheExpiry = 30 * 60 * 1000; // 30 minutes
-    this.requestTimeout = 10000; // 10 seconds
+    this.requestTimeout = 15000; // 15 seconds
+    this.retryAttempts = 3;
+    this.retryDelay = 2000; // 2 seconds
   }
 
   /**
-   * Main function to fetch models - simplified approach
+   * Main function to fetch models - enhanced with multiple strategies
    */
   async fetchModels(options = {}) {
     const { freeOnly = false, apiKey = null, forceRefresh = false } = options;
@@ -26,103 +28,225 @@ class OpenRouterModelScraper {
       }
     }
 
-    try {
-      // Try direct API call first
-      console.log('🌐 Attempting direct OpenRouter API call...');
-      const models = await this.fetchDirect(apiKey);
-      
-      if (models && models.length > 10) {
-        console.log(`🎉 SUCCESS! Fetched ${models.length} models from OpenRouter`);
-        const processedModels = this.processModels(models, freeOnly);
-        this.cacheModels(cacheKey, processedModels);
-        return processedModels;
-      }
-      
-      throw new Error('Insufficient models received');
-      
-    } catch (error) {
-      console.error('❌ OpenRouter API failed:', error.message);
-      
-      // Try CORS proxy fallback
+    // Multiple fetch strategies for maximum compatibility
+    const strategies = [
+      () => this.fetchWithAuthentication(apiKey),
+      () => this.fetchWithPublicAccess(),
+      () => this.fetchWithPagination(apiKey),
+      () => this.fetchWithCorsProxy(apiKey)
+    ];
+
+    let lastError = null;
+    
+    for (let i = 0; i < strategies.length; i++) {
       try {
-        console.log('🔄 Trying CORS proxy fallback...');
-        const models = await this.fetchWithProxy(apiKey);
+        console.log(`🎯 Trying strategy ${i + 1}/${strategies.length}`);
+        const models = await this.retryRequest(strategies[i]);
         
-        if (models && models.length > 10) {
-          console.log(`🎉 PROXY SUCCESS! Fetched ${models.length} models`);
+        if (models && models.length > 0) {
+          console.log(`✅ Success! Fetched ${models.length} raw models`);
+          
+          // Process and filter models
           const processedModels = this.processModels(models, freeOnly);
+          
+          // Cache the results
           this.cacheModels(cacheKey, processedModels);
+          
+          console.log(`🎉 Final result: ${processedModels.length} models (${processedModels.filter(m => m.pricing.isFree).length} free)`);
           return processedModels;
         }
-      } catch (proxyError) {
-        console.error('❌ Proxy also failed:', proxyError.message);
+      } catch (error) {
+        console.warn(`❌ Strategy ${i + 1} failed:`, error.message);
+        lastError = error;
+        
+        // Wait before trying next strategy
+        if (i < strategies.length - 1) {
+          await this.delay(1000);
+        }
       }
-      
-      // Only use fallbacks as last resort
-      console.warn('⚠️ Using fallback models - API connection failed');
-      const fallbackModels = this.getMinimalFallbacks();
-      const filteredFallback = freeOnly ? fallbackModels.filter(m => m.pricing.isFree) : fallbackModels;
-      return filteredFallback;
     }
+
+    console.error('❌ All strategies failed, using enhanced fallback models');
+    const fallbackModels = this.getEnhancedFallbacks();
+    const filteredFallback = freeOnly ? fallbackModels.filter(m => m.pricing.isFree) : fallbackModels;
+    
+    // Cache fallback models with shorter expiry
+    this.cacheModels(cacheKey, filteredFallback);
+    
+    return filteredFallback;
   }
 
   /**
-   * Direct API call to OpenRouter
+   * Strategy 1: Authenticated request with API key
    */
-  async fetchDirect(apiKey) {
+  async fetchWithAuthentication(apiKey) {
+    if (!apiKey) {
+      throw new Error('No API key provided for authenticated request');
+    }
+
     const headers = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Content-Type': 'application/json'
+      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://localhost',
+      'X-Title': 'AI Assistant Web App'
     };
 
-    // Add auth header if API key provided
-    if (apiKey && apiKey.trim()) {
-      headers['Authorization'] = `Bearer ${apiKey.trim()}`;
-      console.log('🔑 Using API key for authenticated request');
-    } else {
-      console.log('🌐 Making public request (no API key)');
+    return await this.makeRequest(`${this.baseUrl}${this.modelsEndpoint}`, { headers });
+  }
+
+  /**
+   * Strategy 2: Public access without authentication
+   */
+  async fetchWithPublicAccess() {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://localhost',
+      'X-Title': 'AI Assistant Web App',
+      'User-Agent': 'Mozilla/5.0 (compatible; AI-Assistant/1.0)'
+    };
+
+    return await this.makeRequest(`${this.baseUrl}${this.modelsEndpoint}`, { headers });
+  }
+
+  /**
+   * Strategy 3: Paginated requests to get more models
+   */
+  async fetchWithPagination(apiKey) {
+    const endpoints = [
+      '/models?per_page=1000',
+      '/models?limit=1000',
+      '/models?page_size=1000',
+      '/models?count=1000'
+    ];
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://localhost',
+      'X-Title': 'AI Assistant Web App'
+    };
+
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const response = await fetch(`${this.baseUrl}${this.modelsEndpoint}`, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(this.requestTimeout)
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    for (const endpoint of endpoints) {
+      try {
+        const models = await this.makeRequest(`${this.baseUrl}${endpoint}`, { headers });
+        if (models && models.length > 10) { // Ensure we got a substantial response
+          return models;
+        }
+      } catch (error) {
+        console.warn(`Pagination endpoint ${endpoint} failed:`, error.message);
+      }
     }
 
-    const data = await response.json();
-    
-    // Handle different response formats
-    if (data.data && Array.isArray(data.data)) {
-      return data.data;
-    } else if (Array.isArray(data)) {
-      return data;
-    } else {
-      throw new Error('Unexpected response format');
+    throw new Error('All pagination endpoints failed');
+  }
+
+  /**
+   * Strategy 4: CORS proxy as last resort
+   */
+  async fetchWithCorsProxy(apiKey) {
+    const corsProxies = [
+      'https://api.allorigins.win/raw?url=',
+      'https://cors-anywhere.herokuapp.com/',
+      'https://corsproxy.io/?'
+    ];
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    for (const proxy of corsProxies) {
+      try {
+        const url = `${proxy}${encodeURIComponent(`${this.baseUrl}${this.modelsEndpoint}`)}`;
+        return await this.makeRequest(url, { headers });
+      } catch (error) {
+        console.warn(`CORS proxy ${proxy} failed:`, error.message);
+      }
+    }
+
+    throw new Error('All CORS proxies failed');
+  }
+
+  /**
+   * Enhanced HTTP request with timeout and error handling
+   */
+  async makeRequest(url, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeout);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        mode: 'cors',
+        credentials: 'omit'
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Handle different response formats
+      if (data.data && Array.isArray(data.data)) {
+        return data.data;
+      } else if (Array.isArray(data)) {
+        return data;
+      } else {
+        throw new Error('Unexpected response format');
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw error;
     }
   }
 
   /**
-   * CORS proxy fallback
+   * Retry mechanism with exponential backoff
    */
-  async fetchWithProxy(apiKey) {
-    const proxyUrl = 'https://api.allorigins.win/raw?url=';
-    const targetUrl = encodeURIComponent(`${this.baseUrl}${this.modelsEndpoint}`);
+  async retryRequest(requestFn) {
+    let lastError;
     
-    const response = await fetch(`${proxyUrl}${targetUrl}`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(this.requestTimeout)
-    });
-
-    if (!response.ok) {
-      throw new Error(`Proxy HTTP ${response.status}: ${response.statusText}`);
+    for (let attempt = 1; attempt <= this.retryAttempts; attempt++) {
+      try {
+        return await requestFn();
+      } catch (error) {
+        lastError = error;
+        
+        if (attempt === this.retryAttempts) {
+          throw error;
+        }
+        
+        const delay = this.retryDelay * Math.pow(2, attempt - 1);
+        console.warn(`Attempt ${attempt} failed, retrying in ${delay}ms:`, error.message);
+        await this.delay(delay);
+      }
     }
+    
+    throw lastError;
+  }
 
-    const data = await response.json();
-    return Array.isArray(data) ? data : data.data || [];
+  /**
+   * Utility delay function
+   */
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -343,11 +467,12 @@ class OpenRouterModelScraper {
   }
 
   /**
-   * Minimal fallback models - only use when API completely fails
+   * Enhanced fallback models - comprehensive list when API fails
    */
-  getMinimalFallbacks() {
-    console.warn('⚠️ Using minimal fallback models - API connection failed');
+  getEnhancedFallbacks() {
+    console.warn('⚠️ Using enhanced fallback models - API connection failed');
     return [
+      // Free Models
       {
         id: 'meta-llama/llama-3.2-3b-instruct:free',
         name: 'Llama 3.2 3B Instruct',
@@ -357,6 +482,16 @@ class OpenRouterModelScraper {
         context_length: 131072,
         capabilities: ['chat', 'code'],
         compatibility: { compatible: true, score: 85 }
+      },
+      {
+        id: 'meta-llama/llama-3.2-1b-instruct:free',
+        name: 'Llama 3.2 1B Instruct',
+        description: '🆓 Free • 128K context • Fast',
+        provider: 'Meta',
+        pricing: { prompt: 0, completion: 0, isFree: true },
+        context_length: 131072,
+        capabilities: ['chat'],
+        compatibility: { compatible: true, score: 80 }
       },
       {
         id: 'google/gemma-2-9b-it:free',
@@ -369,14 +504,165 @@ class OpenRouterModelScraper {
         compatibility: { compatible: true, score: 85 }
       },
       {
+        id: 'microsoft/phi-3-mini-128k-instruct:free',
+        name: 'Phi-3 Mini 128K Instruct',
+        description: '🆓 Free • 128K context • 💻 Code',
+        provider: 'Microsoft',
+        pricing: { prompt: 0, completion: 0, isFree: true },
+        context_length: 131072,
+        capabilities: ['chat', 'code'],
+        compatibility: { compatible: true, score: 82 }
+      },
+      {
+        id: 'huggingface/zephyr-7b-beta:free',
+        name: 'Zephyr 7B Beta',
+        description: '🆓 Free • 32K context • Chat',
+        provider: 'Hugging Face',
+        pricing: { prompt: 0, completion: 0, isFree: true },
+        context_length: 32768,
+        capabilities: ['chat'],
+        compatibility: { compatible: true, score: 78 }
+      },
+      {
+        id: 'openchat/openchat-7b:free',
+        name: 'OpenChat 7B',
+        description: '🆓 Free • 8K context • Chat',
+        provider: 'OpenChat',
+        pricing: { prompt: 0, completion: 0, isFree: true },
+        context_length: 8192,
+        capabilities: ['chat'],
+        compatibility: { compatible: true, score: 75 }
+      },
+      {
+        id: 'mistralai/mistral-7b-instruct:free',
+        name: 'Mistral 7B Instruct',
+        description: '🆓 Free • 32K context • 💻 Code',
+        provider: 'Mistral AI',
+        pricing: { prompt: 0, completion: 0, isFree: true },
+        context_length: 32768,
+        capabilities: ['chat', 'code'],
+        compatibility: { compatible: true, score: 83 }
+      },
+      {
+        id: 'nousresearch/nous-capybara-7b:free',
+        name: 'Nous Capybara 7B',
+        description: '🆓 Free • 4K context • Chat',
+        provider: 'Nous Research',
+        pricing: { prompt: 0, completion: 0, isFree: true },
+        context_length: 4096,
+        capabilities: ['chat'],
+        compatibility: { compatible: true, score: 76 }
+      },
+      // Popular Paid Models
+      {
+        id: 'openai/gpt-4-turbo',
+        name: 'GPT-4 Turbo',
+        description: '$10/1M tokens • 128K context • 🔍 Vision • 💻 Code',
+        provider: 'OpenAI',
+        pricing: { prompt: 0.01, completion: 0.03, isFree: false },
+        context_length: 128000,
+        capabilities: ['chat', 'code', 'vision'],
+        compatibility: { compatible: true, score: 98 }
+      },
+      {
+        id: 'openai/gpt-4',
+        name: 'GPT-4',
+        description: '$30/1M tokens • 8K context • 💻 Code',
+        provider: 'OpenAI',
+        pricing: { prompt: 0.03, completion: 0.06, isFree: false },
+        context_length: 8192,
+        capabilities: ['chat', 'code'],
+        compatibility: { compatible: true, score: 96 }
+      },
+      {
         id: 'openai/gpt-3.5-turbo',
         name: 'GPT-3.5 Turbo',
-        description: '$0.50/1K tokens • 16K context • 💻 Code',
+        description: '$0.50/1M tokens • 16K context • 💻 Code',
         provider: 'OpenAI',
         pricing: { prompt: 0.0005, completion: 0.0015, isFree: false },
         context_length: 16385,
         capabilities: ['chat', 'code'],
-        compatibility: { compatible: true, score: 95 }
+        compatibility: { compatible: true, score: 90 }
+      },
+      {
+        id: 'anthropic/claude-3-opus',
+        name: 'Claude 3 Opus',
+        description: '$15/1M tokens • 200K context • 🔍 Vision • 💻 Code',
+        provider: 'Anthropic',
+        pricing: { prompt: 0.015, completion: 0.075, isFree: false },
+        context_length: 200000,
+        capabilities: ['chat', 'code', 'vision'],
+        compatibility: { compatible: true, score: 97 }
+      },
+      {
+        id: 'anthropic/claude-3-sonnet',
+        name: 'Claude 3 Sonnet',
+        description: '$3/1M tokens • 200K context • 🔍 Vision • 💻 Code',
+        provider: 'Anthropic',
+        pricing: { prompt: 0.003, completion: 0.015, isFree: false },
+        context_length: 200000,
+        capabilities: ['chat', 'code', 'vision'],
+        compatibility: { compatible: true, score: 94 }
+      },
+      {
+        id: 'anthropic/claude-3-haiku',
+        name: 'Claude 3 Haiku',
+        description: '$0.25/1M tokens • 200K context • 🔍 Vision • Fast',
+        provider: 'Anthropic',
+        pricing: { prompt: 0.00025, completion: 0.00125, isFree: false },
+        context_length: 200000,
+        capabilities: ['chat', 'vision'],
+        compatibility: { compatible: true, score: 88 }
+      },
+      {
+        id: 'google/gemini-pro',
+        name: 'Gemini Pro',
+        description: '$0.50/1M tokens • 32K context • 💻 Code',
+        provider: 'Google',
+        pricing: { prompt: 0.0005, completion: 0.0015, isFree: false },
+        context_length: 32768,
+        capabilities: ['chat', 'code'],
+        compatibility: { compatible: true, score: 89 }
+      },
+      {
+        id: 'google/gemini-pro-vision',
+        name: 'Gemini Pro Vision',
+        description: '$0.50/1M tokens • 16K context • 🔍 Vision • 💻 Code',
+        provider: 'Google',
+        pricing: { prompt: 0.0005, completion: 0.0015, isFree: false },
+        context_length: 16384,
+        capabilities: ['chat', 'code', 'vision'],
+        compatibility: { compatible: true, score: 91 }
+      },
+      {
+        id: 'meta-llama/llama-2-70b-chat',
+        name: 'Llama 2 70B Chat',
+        description: '$0.70/1M tokens • 4K context • 💻 Code',
+        provider: 'Meta',
+        pricing: { prompt: 0.0007, completion: 0.0009, isFree: false },
+        context_length: 4096,
+        capabilities: ['chat', 'code'],
+        compatibility: { compatible: true, score: 86 }
+      },
+      {
+        id: 'mistralai/mixtral-8x7b-instruct',
+        name: 'Mixtral 8x7B Instruct',
+        description: '$0.24/1M tokens • 32K context • 💻 Code',
+        provider: 'Mistral AI',
+        pricing: { prompt: 0.00024, completion: 0.00024, isFree: false },
+        context_length: 32768,
+        capabilities: ['chat', 'code'],
+        compatibility: { compatible: true, score: 87 }
+      },
+      {
+        id: 'cohere/command-r-plus',
+        name: 'Command R+',
+        description: '$3/1M tokens • 128K context • 💻 Code',
+        provider: 'Cohere',
+        pricing: { prompt: 0.003, completion: 0.015, isFree: false },
+        context_length: 128000,
+        capabilities: ['chat', 'code'],
+        compatibility: { compatible: true, score: 85 }
       }
     ];
   }

@@ -10,23 +10,13 @@ const UserSettings = ({ isOpen, onClose }) => {
   const { user, updateUserSettings, getUserSettings } = useAuth();
   const [settings, setSettings] = useState({
     theme: 'dark',
-    openrouter_api_key: '',
-    openai_api_key: '',
-    claude_api_key: '',
-    anthropic_api_key: '',
-    gemini_api_key: '',
-    huggingface_api_key: ''
+    openrouter_api_key: ''
   });
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [showApiKeys, setShowApiKeys] = useState({
-    openrouter: false,
-    openai: false,
-    claude: false,
-    anthropic: false,
-    gemini: false,
-    huggingface: false
+    openrouter: false
   });
 
   useEffect(() => {
@@ -41,12 +31,7 @@ const UserSettings = ({ isOpen, onClose }) => {
       if (userSettings) {
         setSettings({
           theme: userSettings.theme || 'dark',
-          openrouter_api_key: userSettings.openrouter_api_key || '',
-          openai_api_key: userSettings.openai_api_key || '',
-          claude_api_key: userSettings.claude_api_key || '',
-          anthropic_api_key: userSettings.anthropic_api_key || '',
-          gemini_api_key: userSettings.gemini_api_key || '',
-          huggingface_api_key: userSettings.huggingface_api_key || ''
+          openrouter_api_key: userSettings.openrouter_api_key || ''
         });
       }
     } catch (error) {
@@ -69,12 +54,7 @@ const UserSettings = ({ isOpen, onClose }) => {
       // Make sure we're passing all the required fields
       const settingsToSave = {
         theme: settings.theme,
-        openrouter_api_key: settings.openrouter_api_key.trim(),
-        openai_api_key: settings.openai_api_key.trim(),
-        claude_api_key: settings.claude_api_key.trim(),
-        anthropic_api_key: settings.anthropic_api_key.trim(),
-        gemini_api_key: settings.gemini_api_key.trim(),
-        huggingface_api_key: settings.huggingface_api_key.trim()
+        openrouter_api_key: settings.openrouter_api_key.trim()
       };
 
       console.log('Settings to save:', settingsToSave);
@@ -142,43 +122,8 @@ const UserSettings = ({ isOpen, onClose }) => {
       key: 'openrouter',
       label: 'OpenRouter API Key',
       placeholder: 'sk-or-...',
-      description: 'Access multiple AI models through OpenRouter',
+      description: 'Access 400+ AI models through OpenRouter - GPT-4, Claude, Gemini, Llama and more',
       website: 'https://openrouter.ai/keys'
-    },
-    {
-      key: 'openai',
-      label: 'OpenAI API Key',
-      placeholder: 'sk-...',
-      description: 'GPT-4, GPT-3.5, and other OpenAI models',
-      website: 'https://platform.openai.com/api-keys'
-    },
-    {
-      key: 'claude',
-      label: 'Claude API Key (Anthropic)',
-      placeholder: 'sk-ant-...',
-      description: 'Anthropic Claude models',
-      website: 'https://console.anthropic.com/account/keys'
-    },
-    {
-      key: 'anthropic',
-      label: 'Anthropic API Key',
-      placeholder: 'sk-ant-...',
-      description: 'Direct access to Anthropic models',
-      website: 'https://console.anthropic.com/account/keys'
-    },
-    {
-      key: 'gemini',
-      label: 'Google Gemini API Key',
-      placeholder: 'AI...',
-      description: 'Google Gemini and Bard models',
-      website: 'https://makersuite.google.com/app/apikey'
-    },
-    {
-      key: 'huggingface',
-      label: 'Hugging Face API Key',
-      placeholder: 'hf_...',
-      description: 'Access to Hugging Face models',
-      website: 'https://huggingface.co/settings/tokens'
     }
   ];
 
@@ -291,12 +236,13 @@ const UserSettings = ({ isOpen, onClose }) => {
 
               {/* API Keys Info */}
               <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <h4 className="text-blue-400 font-medium mb-2">Security Note</h4>
+                <h4 className="text-blue-400 font-medium mb-2">Why OpenRouter?</h4>
                 <ul className="text-slate-400 text-sm space-y-1">
+                  <li>• Access 400+ AI models with a single API key</li>
+                  <li>• Includes GPT-4, Claude, Gemini, Llama, and many free models</li>
                   <li>• API keys are encrypted and stored securely</li>
                   <li>• Keys are only used for your requests and never shared</li>
-                  <li>• You can update or remove keys at any time</li>
-                  <li>• Different tools may require different API providers</li>
+                  <li>• You can update or remove your key at any time</li>
                 </ul>
               </div>
             </div>

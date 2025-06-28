@@ -14,7 +14,7 @@ const QrCodeGenerator = () => {
 
   const generateQRCode = () => {
     if (!text.trim()) return;
-    
+
     // Using QR Server API for simplicity
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}`;
     setQrCodeUrl(qrUrl);
@@ -22,7 +22,7 @@ const QrCodeGenerator = () => {
 
   const downloadQRCode = () => {
     if (!qrCodeUrl) return;
-    
+
     const link = document.createElement('a');
     link.href = qrCodeUrl;
     link.download = 'qrcode.png';
@@ -50,7 +50,6 @@ const QrCodeGenerator = () => {
       {/* Input Section */}
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
         <h3 className="text-white font-semibold text-lg mb-4">QR Code Generator</h3>
-        
         <div className="space-y-4">
           <div>
             <label className="block text-white font-medium mb-2">Text or URL</label>
@@ -61,7 +60,6 @@ const QrCodeGenerator = () => {
               className="w-full h-24 bg-slate-700/50 border border-slate-600 rounded-lg p-4 text-white text-sm resize-none focus:outline-none focus:border-purple-500 transition-colors"
             />
           </div>
-
           <div>
             <label className="block text-white font-medium mb-2">Size: {size}px</label>
             <input
@@ -77,7 +75,6 @@ const QrCodeGenerator = () => {
               <span>500px</span>
             </div>
           </div>
-
           <button
             onClick={generateQRCode}
             disabled={!text.trim()}
@@ -99,7 +96,7 @@ const QrCodeGenerator = () => {
                 className="flex items-center space-x-2 px-4 py-2 bg-slate-600 hover:bg-slate-500 text-white rounded-lg transition-colors"
               >
                 <SafeIcon icon={copied ? FiCheck : FiCopy} className={copied ? 'text-green-400' : ''} />
-                <span>{copied ? 'Copied!' : 'Copy Text'}</span>
+                <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy Text'}</span>
               </button>
               <button
                 onClick={downloadQRCode}
@@ -110,7 +107,6 @@ const QrCodeGenerator = () => {
               </button>
             </div>
           </div>
-
           <div className="flex justify-center">
             <div className="bg-white p-4 rounded-lg">
               <img
@@ -121,7 +117,6 @@ const QrCodeGenerator = () => {
               />
             </div>
           </div>
-
           <div className="mt-4 text-center">
             <p className="text-slate-400 text-sm">
               Scan with any QR code reader or camera app

@@ -1,37 +1,20 @@
-// AI Service for handling different API providers
+// AI Service for handling OpenRouter API
 class AIService {
   constructor() {
-    this.baseURLs = {
-      openrouter: 'https://openrouter.ai/api/v1',
-      openai: 'https://api.openai.com/v1',
-      anthropic: 'https://api.anthropic.com/v1',
-      gemini: 'https://generativelanguage.googleapis.com/v1beta'
-    };
+    this.baseURL = 'https://openrouter.ai/api/v1';
   }
 
-  async sendMessage(provider, apiKey, message, agentConfig) {
+  async sendMessage(apiKey, message, agentConfig) {
     try {
-      switch (provider) {
-        case 'openrouter':
-          return await this.sendOpenRouterMessage(apiKey, message, agentConfig);
-        case 'openai':
-          return await this.sendOpenAIMessage(apiKey, message, agentConfig);
-        case 'anthropic':
-        case 'claude':
-          return await this.sendAnthropicMessage(apiKey, message, agentConfig);
-        case 'gemini':
-          return await this.sendGeminiMessage(apiKey, message, agentConfig);
-        default:
-          throw new Error(`Unsupported provider: ${provider}`);
-      }
+      return await this.sendOpenRouterMessage(apiKey, message, agentConfig);
     } catch (error) {
-      console.error(`Error with ${provider}:`, error);
+      console.error(`Error with OpenRouter:`, error);
       throw error;
     }
   }
 
   async sendOpenRouterMessage(apiKey, message, agentConfig) {
-    const response = await fetch(`${this.baseURLs.openrouter}/chat/completions`, {
+    const response = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -59,105 +42,21 @@ class AIService {
     return data.choices[0].message.content;
   }
 
-  async sendOpenAIMessage(apiKey, message, agentConfig) {
-    const response = await fetch(`${this.baseURLs.openai}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: agentConfig.model || 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: agentConfig.prompt },
-          { role: 'user', content: message }
-        ],
-        max_tokens: 2000,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`OpenAI API error: ${error}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
-
-  async sendAnthropicMessage(apiKey, message, agentConfig) {
-    const response = await fetch(`${this.baseURLs.anthropic}/messages`, {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: agentConfig.model || 'claude-3-sonnet-20240229',
-        max_tokens: 2000,
-        system: agentConfig.prompt,
-        messages: [
-          { role: 'user', content: message }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Anthropic API error: ${error}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-  }
-
-  async sendGeminiMessage(apiKey, message, agentConfig) {
-    const response = await fetch(`${this.baseURLs.gemini}/models/gemini-pro:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: `${agentConfig.prompt}\n\nUser: ${message}` }
-            ]
-          }
-        ],
-        generationConfig: {
-          maxOutputTokens: 2000,
-          temperature: 0.7
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Gemini API error: ${error}`);
-    }
-
-    const data = await response.json();
-    return data.candidates[0].content.parts[0].text;
-  }
-
   // Simulate AI response for demo purposes
   async simulateAIResponse(message, agentConfig, provider) {
     // Add realistic delay
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 
     const responses = {
-      'general': `As your general AI assistant using **${provider}**, I'd be happy to help with: "${message}". 
-
-This is a simulated response for demonstration. In production, this would connect to the ${provider} API using your configured key.
+      'general': `As your general AI assistant using **${provider}**, I'd be happy to help with: "${message}". This is a simulated response for demonstration. In production, this would connect to the ${provider} API using your configured OpenRouter key.
 
 **Key Features:**
 • Real-time AI assistance
-• Multiple provider support
+• Multiple provider support via OpenRouter
 • Conversation history
-• Specialized agent types`,
+• Specialized agent types
+
+To enable real AI responses, configure your OpenRouter API key in Settings. OpenRouter gives you access to 400+ models including GPT-4, Claude, Gemini, Llama, and many free options!`,
 
       'web-scraper': `🕷️ **Web Scraping Analysis** (via ${provider})
 
@@ -179,9 +78,7 @@ For "${message}", I recommend:
 import requests
 from bs4 import BeautifulSoup
 
-headers = {
-    'User-Agent': 'Mozilla/5.0 (compatible; DevBox Tools)'
-}
+headers = {'User-Agent': 'Mozilla/5.0 (compatible; DevBox Tools)'}
 response = requests.get(url, headers=headers)
 soup = BeautifulSoup(response.content, 'html.parser')
 \`\`\`
@@ -251,7 +148,7 @@ print(result["text"])
 
 **Advanced Features:**
 • Speaker diarization
-• Timestamp synchronization
+• Timestamp synchronization  
 • Multi-language support
 • Custom vocabulary training
 
@@ -289,8 +186,8 @@ For optimizing "${message}" searches:
 **Search Query Example:**
 \`\`\`
 ("web scraping" OR "data extraction") 
-site:stackoverflow.com OR site:github.com
-filetype:py OR filetype:js
+site:stackoverflow.com OR site:github.com 
+filetype:py OR filetype:js 
 -advertisement -spam
 \`\`\`
 

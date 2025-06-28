@@ -261,7 +261,6 @@ export const AuthProvider = ({ children }) => {
     if (updates.role && !validRoles.includes(updates.role)) {
       updates.role = 'developer';
     }
-
     if (updates.experience && !validExperiences.includes(updates.experience)) {
       updates.experience = 'beginner';
     }
@@ -313,10 +312,8 @@ export const AuthProvider = ({ children }) => {
 
     try {
       await updateProfile(updates);
-
       // Don't await activity tracking to avoid blocking
       trackActivity('onboarding_completed', null, onboardingData).catch(console.error);
-
       console.log('Onboarding completed successfully');
     } catch (error) {
       console.error('Error in completeOnboarding:', error);
@@ -434,16 +431,11 @@ export const AuthProvider = ({ children }) => {
 
     console.log('Updating user settings:', settings);
 
-    // Prepare the settings object with proper field names
+    // Prepare the settings object with only OpenRouter API key
     const settingsToSave = {
       user_id: user.id,
       theme: settings.theme,
       openrouter_api_key: settings.openrouter_api_key || '',
-      openai_api_key: settings.openai_api_key || '',
-      claude_api_key: settings.claude_api_key || '',
-      anthropic_api_key: settings.anthropic_api_key || '',
-      gemini_api_key: settings.gemini_api_key || '',
-      huggingface_api_key: settings.huggingface_api_key || '',
       updated_at: new Date().toISOString()
     };
 
@@ -468,7 +460,6 @@ export const AuthProvider = ({ children }) => {
           .eq('user_id', user.id)
           .select()
           .single();
-        
         data = result.data;
         error = result.error;
       } else {
@@ -479,7 +470,6 @@ export const AuthProvider = ({ children }) => {
           .insert(settingsToSave)
           .select()
           .single();
-        
         data = result.data;
         error = result.error;
       }
@@ -505,7 +495,6 @@ export const AuthProvider = ({ children }) => {
     if (!user) return null;
 
     console.log('Getting user settings for user:', user.id);
-
     const { data, error } = await supabase
       .from('user_settings_devbox_2024')
       .select('*')

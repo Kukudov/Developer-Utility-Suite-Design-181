@@ -10,8 +10,19 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
-   build: {
+  build: {
     outDir: 'dist',
-    sourcemap: true
-  },
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          ui: ['framer-motion', 'react-icons'],
+          supabase: ['@supabase/supabase-js'],
+          utils: ['date-fns']
+        }
+      }
+    }
+  }
 });

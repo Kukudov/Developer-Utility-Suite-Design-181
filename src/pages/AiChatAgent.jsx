@@ -18,7 +18,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
   const [selectedModel, setSelectedModel] = useState('');
   const [showAgentDropdown, setShowAgentDropdown] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const [apiKeys, setApiKeys] = useState({});
+  const [apiKey, setApiKey] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const [currentSession, setCurrentSession] = useState(null);
   const [chatSessions, setChatSessions] = useState([]);
@@ -29,17 +29,18 @@ const AiChatAgent = ({ onNewChatClick }) => {
   const [modelStats, setModelStats] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProvider, setSelectedProvider] = useState('all');
-
+  const [modelLoadTime, setModelLoadTime] = useState(null);
+  
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
     if (user) {
       trackActivity('ai_chat_viewed');
-      loadApiKeys();
+      loadApiKey();
       loadChatSessions();
-      // Load OpenRouter models after API keys are loaded
-      setTimeout(() => loadOpenRouterModels(), 500);
+      // Start immediate model loading
+      fastLoadModels();
     }
   }, [user]);
 
@@ -51,58 +52,56 @@ const AiChatAgent = ({ onNewChatClick }) => {
   useEffect(() => {
     const agentData = agents.find(a => a.id === selectedAgent);
     if (agentData) {
-      const availableModels = getAvailableModels(agentData);
+      const availableModels = getAvailableModels();
       if (availableModels.length > 0 && !availableModels.some(m => m.id === selectedModel)) {
         setSelectedModel(availableModels[0].id);
       }
     }
-  }, [selectedAgent, apiKeys, openRouterModels, showFreeOnly, searchTerm, selectedProvider]);
+  }, [selectedAgent, apiKey, openRouterModels, showFreeOnly, searchTerm, selectedProvider]);
 
-  const loadApiKeys = async () => {
+  const loadApiKey = async () => {
     try {
       const settings = await getUserSettings();
-      if (settings) {
-        const newApiKeys = {
-          openrouter: settings.openrouter_api_key || '',
-          openai: settings.openai_api_key || '',
-          claude: settings.claude_api_key || '',
-          anthropic: settings.anthropic_api_key || '',
-          gemini: settings.gemini_api_key || '',
-          huggingface: settings.huggingface_api_key || ''
-        };
-        setApiKeys(newApiKeys);
-        console.log('🔑 API Keys loaded:', Object.keys(newApiKeys).filter(k => newApiKeys[k]));
+      if (settings && settings.openrouter_api_key) {
+        setApiKey(settings.openrouter_api_key);
+        console.log('🔑 OpenRouter API Key loaded');
       }
     } catch (error) {
-      console.error('Error loading API keys:', error);
+      console.error('Error loading API key:', error);
     }
   };
 
-  const loadOpenRouterModels = async (forceRefresh = false) => {
+  /**
+   * Fast model loading with speed optimizations
+   */
+  const fastLoadModels = async (forceRefresh = false) => {
+    const startTime = performance.now();
     setLoadingModels(true);
     setModelLoadError(null);
     
-    console.log('🚀 Starting OpenRouter model load...', { 
-      showFreeOnly, 
-      hasOpenRouterKey: !!apiKeys.openrouter,
-      forceRefresh 
-    });
+    console.log('⚡ Fast model loading started...', { showFreeOnly, hasApiKey: !!apiKey, forceRefresh });
     
     try {
-      const apiKey = apiKeys.openrouter || null;
-      
       let models;
+      
       if (showFreeOnly) {
-        console.log('🆓 Fetching free models only...');
-        models = await getOpenRouterFreeModels(apiKey);
+        console.log('🆓 Fast fetching free models...');
+        models = await getOpenRouterFreeModels(apiKey || null);
       } else {
-        console.log('🌐 Fetching all models...');
-        models = await fetchOpenRouterModels({ freeOnly: false, apiKey, forceRefresh });
+        console.log('🌐 Fast fetching all models...');
+        models = await fetchOpenRouterModels({
+          freeOnly: false,
+          apiKey: apiKey || null,
+          forceRefresh
+        });
       }
 
-      console.log(`📊 OpenRouter response: ${models.length} models`);
+      const loadTime = Math.round(performance.now() - startTime);
+      setModelLoadTime(loadTime);
       
-      if (models && models.length > 3) { // Accept if we got more than fallback count
+      console.log(`⚡ Fast loading completed in ${loadTime}ms: ${models.length} models`);
+      
+      if (models && models.length > 3) {
         setOpenRouterModels(models);
         setModelLoadError(null);
         
@@ -111,7 +110,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         setModelStats(stats);
         
         const freeCount = models.filter(m => m.pricing?.isFree).length;
-        console.log(`✅ Successfully loaded ${models.length} models (${freeCount} free)`);
+        console.log(`✅ Successfully loaded ${models.length} models (${freeCount} free) in ${loadTime}ms`);
         
         // Track successful load
         if (user) {
@@ -120,58 +119,71 @@ const AiChatAgent = ({ onNewChatClick }) => {
             freeCount: freeCount,
             freeOnly: showFreeOnly,
             hasApiKey: !!apiKey,
+            loadTime: loadTime,
             source: models.length > 10 ? 'api' : 'fallback'
           });
         }
       } else {
         throw new Error('No models received from OpenRouter');
       }
-
     } catch (error) {
-      console.error('❌ Failed to load OpenRouter models:', error);
+      console.error('❌ Fast model loading failed:', error);
       setModelLoadError(`Failed to load models: ${error.message}`);
       
       // Set minimal fallback for display
       const fallbackModels = [
         {
-          id: 'openai/gpt-3.5-turbo',
-          name: 'GPT-3.5 Turbo',
-          description: 'Fast and efficient • $0.50/1K tokens',
+          id: 'anthropic/claude-3-haiku:free',
+          name: 'Claude 3 Haiku',
+          description: '🆓 Free • 200K context',
+          provider: 'Anthropic',
+          pricing: { isFree: true }
+        },
+        {
+          id: 'openai/gpt-4o-mini:free',
+          name: 'GPT-4o Mini',
+          description: '🆓 Free • 128K context',
           provider: 'OpenAI',
-          pricing: { isFree: false }
+          pricing: { isFree: true }
         }
       ];
-      
       setOpenRouterModels(fallbackModels);
-      
     } finally {
       setLoadingModels(false);
     }
   };
 
-  const refreshModels = async () => {
-    console.log('🔄 Manual refresh requested');
-    await loadOpenRouterModels(true);
+  /**
+   * Fast refresh with loading indicator
+   */
+  const fastRefreshModels = async () => {
+    console.log('🔄 Fast refresh requested');
+    await fastLoadModels(true);
   };
 
+  /**
+   * Clear cache and reload
+   */
   const clearModelsCache = () => {
     const clearedCount = clearOpenRouterCache();
     setModelStats(null);
     console.log(`🗑️ Cleared ${clearedCount} cached entries`);
-    loadOpenRouterModels(true);
+    fastLoadModels(true);
   };
 
+  /**
+   * Toggle free only with fast reload
+   */
   const toggleFreeOnly = () => {
     console.log(`🔄 Toggling free only: ${!showFreeOnly}`);
     setShowFreeOnly(!showFreeOnly);
-    // Reload models with new filter
-    setTimeout(() => loadOpenRouterModels(true), 100);
+    // Fast reload with new filter
+    setTimeout(() => fastLoadModels(true), 50);
   };
 
   // Load chat sessions
   const loadChatSessions = async () => {
     if (!user) return;
-    
     try {
       const { data, error } = await supabase
         .from('ai_chat_sessions_devbox_2024')
@@ -188,7 +200,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
 
   const createNewSession = async (agentType = 'general') => {
     if (!user) return null;
-
     try {
       const { data, error } = await supabase
         .from('ai_chat_sessions_devbox_2024')
@@ -201,11 +212,9 @@ const AiChatAgent = ({ onNewChatClick }) => {
         .single();
 
       if (error) throw error;
-      
       setCurrentSession(data);
       setMessages([]);
       await loadChatSessions();
-      
       return data;
     } catch (error) {
       console.error('Error creating session:', error);
@@ -229,7 +238,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-
       const formattedMessages = data.map(msg => ({
         id: msg.id,
         type: msg.message_type,
@@ -239,7 +247,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
         timestamp: new Date(msg.created_at),
         metadata: msg.metadata
       }));
-
       setMessages(formattedMessages);
     } catch (error) {
       console.error('Error loading messages:', error);
@@ -248,7 +255,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
 
   const saveMessage = async (messageData) => {
     if (!currentSession) return;
-
     try {
       const { data, error } = await supabase
         .from('ai_chat_messages_devbox_2024')
@@ -278,8 +284,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
       icon: FiBot,
       color: 'from-blue-500 to-cyan-500',
       description: 'General AI assistant for various tasks and questions',
-      prompt: 'You are a helpful AI assistant. Provide clear, accurate, and helpful responses to user questions. Format your responses with markdown for better readability.',
-      supportedProviders: ['openrouter', 'openai', 'claude', 'anthropic']
+      prompt: 'You are a helpful AI assistant. Provide clear, accurate, and helpful responses to user questions. Format your responses with markdown for better readability.'
     },
     {
       id: 'web-scraper',
@@ -287,8 +292,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
       icon: FiGlobe,
       color: 'from-green-500 to-emerald-500',
       description: 'Specialized in web scraping guidance and data extraction',
-      prompt: 'You are a web scraping expert. Help users with web scraping techniques, tools, legal considerations, and best practices. Provide code examples using popular tools like BeautifulSoup, Scrapy, Puppeteer, or Selenium. Always include ethical and legal considerations.',
-      supportedProviders: ['openrouter', 'openai', 'claude']
+      prompt: 'You are a web scraping expert. Help users with web scraping techniques, tools, legal considerations, and best practices. Provide code examples using popular tools like BeautifulSoup, Scrapy, Puppeteer, or Selenium. Always include ethical and legal considerations.'
     },
     {
       id: 'research-generator',
@@ -296,8 +300,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
       icon: FiSearch,
       color: 'from-purple-500 to-pink-500',
       description: 'Assists with research planning and content generation',
-      prompt: 'You are a research specialist. Help users plan research projects, find reliable sources, create research outlines, and generate comprehensive research content. Focus on methodology, credible sources, and structured analysis.',
-      supportedProviders: ['openrouter', 'openai', 'claude', 'anthropic']
+      prompt: 'You are a research specialist. Help users plan research projects, find reliable sources, create research outlines, and generate comprehensive research content. Focus on methodology, credible sources, and structured analysis.'
     },
     {
       id: 'youtube-transcriber',
@@ -305,8 +308,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
       icon: FiYoutube,
       color: 'from-red-500 to-orange-500',
       description: 'Helps with YouTube content analysis and transcription',
-      prompt: 'You are a YouTube content specialist. Help users with video transcription techniques, content analysis, subtitle generation, and YouTube API usage. Provide guidance on tools and methods for extracting and analyzing video content.',
-      supportedProviders: ['openrouter', 'openai', 'gemini']
+      prompt: 'You are a YouTube content specialist. Help users with video transcription techniques, content analysis, subtitle generation, and YouTube API usage. Provide guidance on tools and methods for extracting and analyzing video content.'
     },
     {
       id: 'search-pro',
@@ -314,72 +316,24 @@ const AiChatAgent = ({ onNewChatClick }) => {
       icon: FiZap,
       color: 'from-yellow-500 to-orange-500',
       description: 'Advanced search strategies and information retrieval',
-      prompt: 'You are a search optimization expert. Help users with advanced search techniques, Boolean operators, search engine optimization, and information retrieval strategies. Provide tips for finding specific information efficiently across different platforms and databases.',
-      supportedProviders: ['openrouter', 'openai', 'claude']
+      prompt: 'You are a search optimization expert. Help users with advanced search techniques, Boolean operators, search engine optimization, and information retrieval strategies. Provide tips for finding specific information efficiently across different platforms and databases.'
     }
   ];
-
-  // Available models for each provider
-  const modelsByProvider = {
-    openrouter: openRouterModels,
-    openai: [
-      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Latest GPT-4 with improved performance' },
-      { id: 'gpt-4', name: 'GPT-4', description: 'Most capable GPT model' },
-      { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and efficient' },
-      { id: 'gpt-3.5-turbo-16k', name: 'GPT-3.5 Turbo 16K', description: 'Extended context length' }
-    ],
-    claude: [
-      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Most powerful Claude model' },
-      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Balanced performance' },
-      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fastest Claude model' }
-    ],
-    anthropic: [
-      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: 'Most powerful Claude model' },
-      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: 'Balanced performance' },
-      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: 'Fastest Claude model' }
-    ],
-    gemini: [
-      { id: 'gemini-pro', name: 'Gemini Pro', description: 'Google\'s advanced model' },
-      { id: 'gemini-pro-vision', name: 'Gemini Pro Vision', description: 'With image understanding' }
-    ]
-  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const getAvailableApiKey = (agent) => {
-    const supportedProviders = agent.supportedProviders;
-    for (const provider of supportedProviders) {
-      if (apiKeys[provider]) {
-        return { provider, key: apiKeys[provider] };
-      }
-    }
+  const getAvailableModels = () => {
+    let models = openRouterModels || [];
 
-    // Fallback to any available key
-    if (apiKeys.openrouter) return { provider: 'openrouter', key: apiKeys.openrouter };
-    if (apiKeys.openai) return { provider: 'openai', key: apiKeys.openai };
-    if (apiKeys.claude) return { provider: 'claude', key: apiKeys.claude };
-    if (apiKeys.anthropic) return { provider: 'anthropic', key: apiKeys.anthropic };
-    if (apiKeys.gemini) return { provider: 'gemini', key: apiKeys.gemini };
-
-    return null;
-  };
-
-  const getAvailableModels = (agent) => {
-    const availableApiKey = getAvailableApiKey(agent);
-    if (!availableApiKey) return [];
-
-    const provider = availableApiKey.provider;
-    let models = modelsByProvider[provider] || [];
-
-    // Filter by free only if using OpenRouter and the toggle is on
-    if (provider === 'openrouter' && showFreeOnly) {
+    // Filter by free only if toggle is on
+    if (showFreeOnly) {
       models = models.filter(model => model.pricing?.isFree);
     }
 
-    // Filter by search term if using OpenRouter
-    if (searchTerm && provider === 'openrouter') {
+    // Filter by search term
+    if (searchTerm) {
       models = models.filter(model =>
         model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         model.provider?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -388,7 +342,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
     }
 
     // Filter by provider if selected
-    if (selectedProvider && selectedProvider !== 'all' && provider === 'openrouter') {
+    if (selectedProvider && selectedProvider !== 'all') {
       models = models.filter(model =>
         model.provider?.toLowerCase().includes(selectedProvider.toLowerCase())
       );
@@ -407,7 +361,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
     if (!inputMessage.trim() || isLoading) return;
 
     const selectedAgentData = agents.find(a => a.id === selectedAgent);
-    const apiKey = getAvailableApiKey(selectedAgentData);
 
     // Create session if none exists
     let session = currentSession;
@@ -435,7 +388,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
       if (user) {
         await trackActivity('ai_chat_message_sent', selectedAgent, {
           agent: selectedAgent,
-          provider: apiKey?.provider || 'simulation',
+          provider: apiKey ? 'openrouter' : 'simulation',
           model: selectedModel,
           messageLength: inputMessage.length,
           sessionId: session.id
@@ -445,31 +398,29 @@ const AiChatAgent = ({ onNewChatClick }) => {
       let aiResponse;
       let provider = 'simulation';
 
-      if (apiKey && apiKey.key) {
+      if (apiKey) {
         try {
           // Use selected model or fallback to agent's default
-          const modelToUse = selectedModel || selectedAgentData.model || 'gpt-3.5-turbo';
-
+          const modelToUse = selectedModel || 'openai/gpt-3.5-turbo';
+          
           // Try real API call
           aiResponse = await aiService.sendMessage(
-            apiKey.provider,
-            apiKey.key,
+            apiKey,
             inputMessage,
             { ...selectedAgentData, model: modelToUse }
           );
-          provider = apiKey.provider;
-
+          provider = 'openrouter';
         } catch (apiError) {
           console.error('API call failed, falling back to simulation:', apiError);
           // Fallback to simulation
-          aiResponse = await aiService.simulateAIResponse(inputMessage, selectedAgentData, apiKey.provider);
-          provider = `${apiKey.provider}-simulation`;
+          aiResponse = await aiService.simulateAIResponse(inputMessage, selectedAgentData, 'openrouter');
+          provider = 'openrouter-simulation';
         }
       } else {
         // No API key available, use simulation
         aiResponse = await aiService.simulateAIResponse(inputMessage, selectedAgentData, 'demo');
         // Add API configuration notice to response
-        aiResponse = `🔧 **Demo Mode** - Configure API keys in Settings to enable real AI responses.\n\n${aiResponse}`;
+        aiResponse = `🔧 **Demo Mode** - Configure your OpenRouter API key in Settings to enable real AI responses.\n\n${aiResponse}`;
       }
 
       const aiMessage = {
@@ -492,19 +443,15 @@ const AiChatAgent = ({ onNewChatClick }) => {
         .from('ai_chat_sessions_devbox_2024')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', session.id);
-
     } catch (error) {
       console.error('Error sending message:', error);
-
       const errorMessage = {
         id: Date.now() + 1,
         type: 'system',
         content: 'Sorry, there was an error processing your message. Please try again.',
         timestamp: new Date()
       };
-
       setMessages(prev => [...prev, errorMessage]);
-
     } finally {
       setIsLoading(false);
     }
@@ -520,7 +467,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
           .eq('session_id', currentSession.id);
 
         setMessages([]);
-
         if (user) {
           trackActivity('ai_chat_cleared', selectedAgent);
         }
@@ -541,7 +487,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
         setCurrentSession(null);
         setMessages([]);
       }
-
       await loadChatSessions();
     } catch (error) {
       console.error('Error deleting session:', error);
@@ -572,8 +517,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
   };
 
   const selectedAgentData = agents.find(a => a.id === selectedAgent);
-  const availableApiKey = getAvailableApiKey(selectedAgentData);
-  const availableModels = getAvailableModels(selectedAgentData);
+  const availableModels = getAvailableModels();
   const selectedModelData = availableModels.find(m => m.id === selectedModel);
   const uniqueProviders = getUniqueProviders();
 
@@ -654,6 +598,11 @@ const AiChatAgent = ({ onNewChatClick }) => {
               {openRouterModels.length > 0 && (
                 <span className="ml-2 text-green-400 text-sm">
                   ({openRouterModels.filter(m => m.pricing?.isFree).length} free models available)
+                  {modelLoadTime && (
+                    <span className="ml-2 text-blue-400">
+                      • Loaded in {modelLoadTime}ms ⚡
+                    </span>
+                  )}
                 </span>
               )}
             </p>
@@ -712,20 +661,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
                             <div className="flex-1">
                               <h3 className="text-white font-medium">{agent.name}</h3>
                               <p className="text-slate-400 text-sm mt-1">{agent.description}</p>
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {agent.supportedProviders.map(provider => (
-                                  <span
-                                    key={provider}
-                                    className={`px-2 py-1 text-xs rounded ${
-                                      apiKeys[provider] 
-                                        ? 'bg-green-500/20 text-green-400' 
-                                        : 'bg-slate-600/50 text-slate-500'
-                                    }`}
-                                  >
-                                    {provider}
-                                  </span>
-                                ))}
-                              </div>
                             </div>
                           </button>
                         ))}
@@ -739,84 +674,87 @@ const AiChatAgent = ({ onNewChatClick }) => {
               <div className="lg:col-span-2">
                 <div className="flex items-center justify-between mb-3">
                   <label className="block text-white font-medium">Select Model</label>
-                  {availableApiKey?.provider === 'openrouter' && (
-                    <div className="flex items-center space-x-2">
-                      {/* Free Only Toggle */}
-                      <button
-                        onClick={toggleFreeOnly}
-                        className={`p-1.5 rounded-md transition-colors ${
-                          showFreeOnly 
-                            ? 'bg-green-500/20 text-green-400' 
-                            : 'bg-slate-600/50 text-slate-400'
-                        }`}
-                        title={`${showFreeOnly ? 'Show all' : 'Show free only'} models`}
-                      >
-                        <SafeIcon icon={showFreeOnly ? FiGift : FiDollarSign} className="text-xs" />
-                      </button>
+                  <div className="flex items-center space-x-2">
+                    {/* Free Only Toggle */}
+                    <button
+                      onClick={toggleFreeOnly}
+                      className={`p-1.5 rounded-md transition-colors ${
+                        showFreeOnly
+                          ? 'bg-green-500/20 text-green-400'
+                          : 'bg-slate-600/50 text-slate-400'
+                      }`}
+                      title={`${showFreeOnly ? 'Show all' : 'Show free only'} models`}
+                    >
+                      <SafeIcon icon={showFreeOnly ? FiGift : FiDollarSign} className="text-xs" />
+                    </button>
 
-                      {/* Refresh Button */}
-                      <button
-                        onClick={refreshModels}
-                        disabled={loadingModels}
-                        className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-md hover:bg-slate-600"
-                        title="Refresh OpenRouter models"
-                      >
-                        <SafeIcon icon={FiRefreshCw} className={`text-xs ${loadingModels ? 'animate-spin' : ''}`} />
-                      </button>
+                    {/* Refresh Button */}
+                    <button
+                      onClick={fastRefreshModels}
+                      disabled={loadingModels}
+                      className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-md hover:bg-slate-600"
+                      title="Fast refresh OpenRouter models"
+                    >
+                      <SafeIcon
+                        icon={FiRefreshCw}
+                        className={`text-xs ${loadingModels ? 'animate-spin' : ''}`}
+                      />
+                    </button>
 
-                      {/* Clear Cache Button */}
-                      <button
-                        onClick={clearModelsCache}
-                        className="p-1.5 text-slate-400 hover:text-red-400 transition-colors rounded-md hover:bg-slate-600"
-                        title="Clear model cache"
-                      >
-                        <SafeIcon icon={FiTrash2} className="text-xs" />
-                      </button>
-                    </div>
-                  )}
+                    {/* Clear Cache Button */}
+                    <button
+                      onClick={clearModelsCache}
+                      className="p-1.5 text-slate-400 hover:text-red-400 transition-colors rounded-md hover:bg-slate-600"
+                      title="Clear model cache"
+                    >
+                      <SafeIcon icon={FiTrash2} className="text-xs" />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Search and Filter for OpenRouter */}
-                {availableApiKey?.provider === 'openrouter' && (
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    <div className="relative">
-                      <SafeIcon icon={FiSearch} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs" />
-                      <input
-                        type="text"
-                        placeholder="Search models..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:border-green-500 transition-colors"
-                      />
-                    </div>
-
-                    <select
-                      value={selectedProvider}
-                      onChange={(e) => setSelectedProvider(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-md text-white focus:outline-none focus:border-green-500 transition-colors"
-                    >
-                      <option value="all">All Providers</option>
-                      {uniqueProviders.map(provider => (
-                        <option key={provider} value={provider}>{provider}</option>
-                      ))}
-                    </select>
+                {/* Search and Filter */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="relative">
+                    <SafeIcon
+                      icon={FiSearch}
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search models..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:border-green-500 transition-colors"
+                    />
                   </div>
-                )}
+                  <select
+                    value={selectedProvider}
+                    onChange={(e) => setSelectedProvider(e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-md text-white focus:outline-none focus:border-green-500 transition-colors"
+                  >
+                    <option value="all">All Providers</option>
+                    {uniqueProviders.map(provider => (
+                      <option key={provider} value={provider}>{provider}</option>
+                    ))}
+                  </select>
+                </div>
 
                 <div className="relative">
                   <button
                     onClick={() => setShowModelDropdown(!showModelDropdown)}
-                    disabled={!availableApiKey || availableModels.length === 0 || loadingModels}
+                    disabled={availableModels.length === 0 || loadingModels}
                     className="w-full flex items-center justify-between space-x-3 px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white hover:border-slate-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex items-center space-x-3">
-                      <SafeIcon icon={loadingModels ? FiLoader : FiCpu} className={`text-purple-400 ${loadingModels ? 'animate-spin' : ''}`} />
+                      <SafeIcon
+                        icon={loadingModels ? FiLoader : FiCpu}
+                        className={`text-purple-400 ${loadingModels ? 'animate-spin' : ''}`}
+                      />
                       <div className="text-left">
                         <div className="font-medium text-sm">
-                          {loadingModels 
-                            ? 'Loading models...' 
-                            : selectedModelData?.name || `Select Model (${availableModels.length} available)`
-                          }
+                          {loadingModels
+                            ? 'Loading models...'
+                            : selectedModelData?.name || `Select Model (${availableModels.length} available)`}
                         </div>
                         {selectedModelData?.pricing?.isFree && (
                           <div className="text-green-400 text-xs">🆓 Free Model</div>
@@ -866,7 +804,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                         ) : (
                           <div className="p-4 text-center text-slate-400">
                             {modelLoadError || 'No models available'}
-                            {availableApiKey?.provider === 'openrouter' && showFreeOnly && (
+                            {showFreeOnly && (
                               <div className="mt-2">
                                 <button
                                   onClick={toggleFreeOnly}
@@ -890,7 +828,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                 )}
 
                 {/* Model Statistics */}
-                {modelStats && availableApiKey?.provider === 'openrouter' && (
+                {modelStats && (
                   <div className="mt-2 text-xs text-slate-500">
                     <div className="flex items-center justify-between">
                       <span>
@@ -915,13 +853,18 @@ const AiChatAgent = ({ onNewChatClick }) => {
             <div className="mt-4 bg-slate-700/30 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  {availableApiKey ? (
+                  {apiKey ? (
                     <div className="flex items-center space-x-2">
                       <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                       <span className="text-green-400 font-medium">Connected</span>
                       <span className="text-slate-400 text-sm">
-                        via {availableApiKey.provider}
+                        via OpenRouter
                       </span>
+                      {modelLoadTime && (
+                        <span className="text-blue-400 text-sm">
+                          • {modelLoadTime}ms ⚡
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center space-x-2">
@@ -941,7 +884,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   )}
                 </div>
                 <div className="text-xs text-slate-400">
-                  Supported: {selectedAgentData.supportedProviders.join(', ')}
+                  OpenRouter: {openRouterModels.length}+ models available
                 </div>
               </div>
             </div>
@@ -963,12 +906,13 @@ const AiChatAgent = ({ onNewChatClick }) => {
                 <div>
                   <h3 className="text-white font-semibold">{selectedAgentData.name}</h3>
                   <p className="text-slate-400 text-sm">
-                    {messages.length} messages • {availableApiKey ? `Using ${availableApiKey.provider}` : 'Demo mode'}
+                    {messages.length} messages • {apiKey ? 'Using OpenRouter' : 'Demo mode'}
                     {selectedModelData && ` • ${selectedModelData.name}`}
                     {selectedModelData?.pricing?.isFree && ' (Free)'}
                   </p>
                 </div>
               </div>
+
               <div className="flex items-center space-x-2">
                 {currentSession && (
                   <button
@@ -993,18 +937,25 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   <p className="text-slate-400 max-w-md mx-auto mb-6">
                     {selectedAgentData.description}. Ask questions or request assistance to get started!
                   </p>
-                  {!availableApiKey && (
+
+                  {!apiKey && (
                     <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 max-w-md mx-auto">
                       <p className="text-yellow-400 text-sm">
-                        Configure API keys in Settings to enable real AI responses, or try the demo mode!
+                        Configure your OpenRouter API key in Settings to enable real AI responses, or try the demo mode!
                       </p>
                     </div>
                   )}
-                  {availableApiKey?.provider === 'openrouter' && openRouterModels.length > 0 && (
+
+                  {apiKey && openRouterModels.length > 0 && (
                     <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 max-w-md mx-auto mt-4">
                       <p className="text-blue-400 text-sm">
                         🎉 {openRouterModels.filter(m => m.pricing?.isFree).length} free models available via OpenRouter!
                         {!showFreeOnly && ` (${openRouterModels.length} total models)`}
+                        {modelLoadTime && (
+                          <span className="block mt-1 text-xs">
+                            ⚡ Loaded in {modelLoadTime}ms
+                          </span>
+                        )}
                       </p>
                     </div>
                   )}
@@ -1020,26 +971,31 @@ const AiChatAgent = ({ onNewChatClick }) => {
                     <div className={`flex items-start space-x-4 max-w-[85%] ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                       {/* Avatar */}
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        message.type === 'user' 
-                          ? 'bg-gradient-to-br from-green-500 to-blue-500' 
-                          : message.type === 'system' 
-                            ? 'bg-yellow-500/20 border border-yellow-500/30'
-                            : `bg-gradient-to-br ${selectedAgentData.color}`
+                        message.type === 'user'
+                          ? 'bg-gradient-to-br from-green-500 to-blue-500'
+                          : message.type === 'system'
+                          ? 'bg-yellow-500/20 border border-yellow-500/30'
+                          : `bg-gradient-to-br ${selectedAgentData.color}`
                       }`}>
-                        <SafeIcon icon={
-                          message.type === 'user' ? FiUser :
-                          message.type === 'system' ? FiSettings :
-                          selectedAgentData.icon
-                        } className="text-white" />
+                        <SafeIcon
+                          icon={
+                            message.type === 'user'
+                              ? FiUser
+                              : message.type === 'system'
+                              ? FiSettings
+                              : selectedAgentData.icon
+                          }
+                          className="text-white"
+                        />
                       </div>
 
                       {/* Message Content */}
                       <div className={`rounded-xl p-4 ${
-                        message.type === 'user' 
-                          ? 'bg-green-500/20 border border-green-500/30' 
+                        message.type === 'user'
+                          ? 'bg-green-500/20 border border-green-500/30'
                           : message.type === 'system'
-                            ? 'bg-yellow-500/10 border border-yellow-500/20'
-                            : 'bg-slate-700/50 border border-slate-600'
+                          ? 'bg-yellow-500/10 border border-yellow-500/20'
+                          : 'bg-slate-700/50 border border-slate-600'
                       }`}>
                         <div className="prose prose-invert max-w-none">
                           <div className="text-white whitespace-pre-wrap text-sm leading-relaxed">
@@ -1069,7 +1025,10 @@ const AiChatAgent = ({ onNewChatClick }) => {
                               className="text-slate-400 hover:text-white transition-colors p-1 rounded"
                               title="Copy message"
                             >
-                              <SafeIcon icon={copiedMessageId === message.id ? FiCheck : FiCopy} className={`text-xs ${copiedMessageId === message.id ? 'text-green-400' : ''}`} />
+                              <SafeIcon
+                                icon={copiedMessageId === message.id ? FiCheck : FiCopy}
+                                className={`text-xs ${copiedMessageId === message.id ? 'text-green-400' : ''}`}
+                              />
                             </button>
                           )}
                         </div>
@@ -1113,7 +1072,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder={availableApiKey ? `Ask ${selectedAgentData.name} anything...` : 'Try the demo mode or configure API keys in Settings...'}
+                    placeholder={apiKey ? `Ask ${selectedAgentData.name} anything...` : 'Try the demo mode or configure OpenRouter API key in Settings...'}
                     rows={1}
                     className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-green-500 transition-colors resize-none"
                     style={{ minHeight: '48px', maxHeight: '120px' }}
@@ -1133,17 +1092,20 @@ const AiChatAgent = ({ onNewChatClick }) => {
                 <p className="text-slate-400 text-xs">
                   Press Enter to send, Shift+Enter for new line
                 </p>
-                {availableApiKey ? (
+                {apiKey ? (
                   <p className="text-slate-500 text-xs">
-                    Using {availableApiKey.provider} API
+                    Using OpenRouter API
                     {selectedModelData && ` • ${selectedModelData.name}`}
                     {selectedModelData?.pricing?.isFree && (
                       <span className="text-green-400 ml-1">FREE</span>
                     )}
+                    {modelLoadTime && (
+                      <span className="text-blue-400 ml-1">• {modelLoadTime}ms ⚡</span>
+                    )}
                   </p>
                 ) : (
                   <p className="text-yellow-500 text-xs">
-                    Demo mode - Configure API keys for real responses
+                    Demo mode - Configure OpenRouter API key for real responses
                   </p>
                 )}
               </div>
@@ -1151,7 +1113,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
           </motion.div>
 
           {/* API Configuration Notice */}
-          {!availableApiKey && (
+          {!apiKey && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1161,30 +1123,31 @@ const AiChatAgent = ({ onNewChatClick }) => {
               <div className="flex items-start space-x-4">
                 <SafeIcon icon={FiSettings} className="text-yellow-400 mt-1 flex-shrink-0" />
                 <div>
-                  <h4 className="text-yellow-400 font-medium mb-2">API Configuration Available</h4>
+                  <h4 className="text-yellow-400 font-medium mb-2">OpenRouter API Configuration Available</h4>
                   <p className="text-slate-400 mb-4">
-                    You're currently using demo mode. To enable real AI responses, configure at least one API key in your settings. 
-                    This agent supports: <strong>{selectedAgentData.supportedProviders.join(', ')}</strong>
+                    You're currently using demo mode. To enable real AI responses, configure your OpenRouter API key in your settings.
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <h5 className="text-white font-medium mb-1">OpenRouter</h5>
-                      <p className="text-slate-400 text-sm">
-                        Access 400+ AI models with one key
-                        {openRouterModels.filter(m => m.pricing?.isFree).length > 0 && (
-                          <span className="block text-green-400 text-xs mt-1">
-                            {openRouterModels.filter(m => m.pricing?.isFree).length} free models available!
-                          </span>
+                      <h5 className="text-white font-medium mb-1">OpenRouter Benefits</h5>
+                      <ul className="text-slate-400 text-sm space-y-1">
+                        <li>• Access 400+ AI models with one key</li>
+                        <li>• {openRouterModels.filter(m => m.pricing?.isFree).length}+ free models available!</li>
+                        <li>• Includes GPT-4, Claude, Gemini, Llama</li>
+                        <li>• Cost-effective with competitive pricing</li>
+                        {modelLoadTime && (
+                          <li>• ⚡ Fast loading ({modelLoadTime}ms)</li>
                         )}
-                      </p>
+                      </ul>
                     </div>
                     <div>
-                      <h5 className="text-white font-medium mb-1">OpenAI</h5>
-                      <p className="text-slate-400 text-sm">GPT-4 and GPT-3.5 models</p>
-                    </div>
-                    <div>
-                      <h5 className="text-white font-medium mb-1">Claude</h5>
-                      <p className="text-slate-400 text-sm">Anthropic's Claude models</p>
+                      <h5 className="text-white font-medium mb-1">Security & Privacy</h5>
+                      <ul className="text-slate-400 text-sm space-y-1">
+                        <li>• API keys are encrypted and stored securely</li>
+                        <li>• Keys are only used for your requests</li>
+                        <li>• Never shared with third parties</li>
+                        <li>• You can update or remove anytime</li>
+                      </ul>
                     </div>
                   </div>
                 </div>

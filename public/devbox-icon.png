@@ -1,0 +1,4 @@
+<!-- This would be the uploaded image file. Since I can't directly save images, you'll need to:
+1. Download the image from the URL: https://quest-media-storage-bucket.s3.us-east-2.amazonaws.com/1751052038289-Ultimate%20DevBox%20Tools.png
+2. Save it as public/devbox-icon.png
+3. Also create smaller versions: public/devbox-icon-16.png, public/devbox-icon-32.png for favicon -->

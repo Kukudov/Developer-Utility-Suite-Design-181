@@ -30,7 +30,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProvider, setSelectedProvider] = useState('all');
   const [modelLoadTime, setModelLoadTime] = useState(null);
-  
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -72,18 +72,24 @@ const AiChatAgent = ({ onNewChatClick }) => {
   };
 
   /**
+   * Check if model is free based on name containing "(Free)"
+   */
+  const isModelFreeByName = (model) => {
+    if (!model || !model.name) return false;
+    return model.name.toLowerCase().includes('(free)');
+  };
+
+  /**
    * Fast model loading with speed optimizations
    */
   const fastLoadModels = async (forceRefresh = false) => {
     const startTime = performance.now();
     setLoadingModels(true);
     setModelLoadError(null);
-    
     console.log('⚡ Fast model loading started...', { showFreeOnly, hasApiKey: !!apiKey, forceRefresh });
-    
+
     try {
       let models;
-      
       if (showFreeOnly) {
         console.log('🆓 Fast fetching free models...');
         models = await getOpenRouterFreeModels(apiKey || null);
@@ -98,20 +104,19 @@ const AiChatAgent = ({ onNewChatClick }) => {
 
       const loadTime = Math.round(performance.now() - startTime);
       setModelLoadTime(loadTime);
-      
       console.log(`⚡ Fast loading completed in ${loadTime}ms: ${models.length} models`);
-      
+
       if (models && models.length > 3) {
         setOpenRouterModels(models);
         setModelLoadError(null);
-        
+
         // Update statistics
         const stats = getOpenRouterStatistics();
         setModelStats(stats);
-        
-        const freeCount = models.filter(m => m.pricing?.isFree).length;
+
+        const freeCount = models.filter(m => isModelFreeByName(m)).length;
         console.log(`✅ Successfully loaded ${models.length} models (${freeCount} free) in ${loadTime}ms`);
-        
+
         // Track successful load
         if (user) {
           trackActivity('openrouter_models_loaded', null, {
@@ -129,20 +134,20 @@ const AiChatAgent = ({ onNewChatClick }) => {
     } catch (error) {
       console.error('❌ Fast model loading failed:', error);
       setModelLoadError(`Failed to load models: ${error.message}`);
-      
+
       // Set minimal fallback for display
       const fallbackModels = [
         {
           id: 'anthropic/claude-3-haiku:free',
-          name: 'Claude 3 Haiku',
-          description: '🆓 Free • 200K context',
+          name: 'Claude 3 Haiku (Free)',
+          description: 'FREE • 200K context',
           provider: 'Anthropic',
           pricing: { isFree: true }
         },
         {
           id: 'openai/gpt-4o-mini:free',
-          name: 'GPT-4o Mini',
-          description: '🆓 Free • 128K context',
+          name: 'GPT-4o Mini (Free)',
+          description: 'FREE • 128K context',
           provider: 'OpenAI',
           pricing: { isFree: true }
         }
@@ -184,6 +189,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
   // Load chat sessions
   const loadChatSessions = async () => {
     if (!user) return;
+
     try {
       const { data, error } = await supabase
         .from('ai_chat_sessions_devbox_2024')
@@ -200,6 +206,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
 
   const createNewSession = async (agentType = 'general') => {
     if (!user) return null;
+
     try {
       const { data, error } = await supabase
         .from('ai_chat_sessions_devbox_2024')
@@ -212,6 +219,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         .single();
 
       if (error) throw error;
+
       setCurrentSession(data);
       setMessages([]);
       await loadChatSessions();
@@ -238,6 +246,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+
       const formattedMessages = data.map(msg => ({
         id: msg.id,
         type: msg.message_type,
@@ -247,6 +256,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         timestamp: new Date(msg.created_at),
         metadata: msg.metadata
       }));
+
       setMessages(formattedMessages);
     } catch (error) {
       console.error('Error loading messages:', error);
@@ -255,6 +265,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
 
   const saveMessage = async (messageData) => {
     if (!currentSession) return;
+
     try {
       const { data, error } = await supabase
         .from('ai_chat_messages_devbox_2024')
@@ -329,7 +340,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
 
     // Filter by free only if toggle is on
     if (showFreeOnly) {
-      models = models.filter(model => model.pricing?.isFree);
+      models = models.filter(model => isModelFreeByName(model));
     }
 
     // Filter by search term
@@ -402,7 +413,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         try {
           // Use selected model or fallback to agent's default
           const modelToUse = selectedModel || 'openai/gpt-3.5-turbo';
-          
+
           // Try real API call
           aiResponse = await aiService.sendMessage(
             apiKey,
@@ -443,6 +454,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         .from('ai_chat_sessions_devbox_2024')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', session.id);
+
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = {
@@ -467,6 +479,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
           .eq('session_id', currentSession.id);
 
         setMessages([]);
+
         if (user) {
           trackActivity('ai_chat_cleared', selectedAgent);
         }
@@ -487,6 +500,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         setCurrentSession(null);
         setMessages([]);
       }
+
       await loadChatSessions();
     } catch (error) {
       console.error('Error deleting session:', error);
@@ -597,7 +611,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
               Chat with specialized AI agents using OpenRouter models
               {openRouterModels.length > 0 && (
                 <span className="ml-2 text-green-400 text-sm">
-                  ({openRouterModels.filter(m => m.pricing?.isFree).length} free models available)
+                  ({openRouterModels.filter(m => isModelFreeByName(m)).length} free models available)
                   {modelLoadTime && (
                     <span className="ml-2 text-blue-400">
                       • Loaded in {modelLoadTime}ms ⚡
@@ -695,10 +709,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                       className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-md hover:bg-slate-600"
                       title="Fast refresh OpenRouter models"
                     >
-                      <SafeIcon
-                        icon={FiRefreshCw}
-                        className={`text-xs ${loadingModels ? 'animate-spin' : ''}`}
-                      />
+                      <SafeIcon icon={FiRefreshCw} className={`text-xs ${loadingModels ? 'animate-spin' : ''}`} />
                     </button>
 
                     {/* Clear Cache Button */}
@@ -715,10 +726,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                 {/* Search and Filter */}
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="relative">
-                    <SafeIcon
-                      icon={FiSearch}
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs"
-                    />
+                    <SafeIcon icon={FiSearch} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs" />
                     <input
                       type="text"
                       placeholder="Search models..."
@@ -746,18 +754,18 @@ const AiChatAgent = ({ onNewChatClick }) => {
                     className="w-full flex items-center justify-between space-x-3 px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white hover:border-slate-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <div className="flex items-center space-x-3">
-                      <SafeIcon
-                        icon={loadingModels ? FiLoader : FiCpu}
-                        className={`text-purple-400 ${loadingModels ? 'animate-spin' : ''}`}
-                      />
+                      <SafeIcon icon={loadingModels ? FiLoader : FiCpu} className={`text-purple-400 ${loadingModels ? 'animate-spin' : ''}`} />
                       <div className="text-left">
                         <div className="font-medium text-sm">
-                          {loadingModels
-                            ? 'Loading models...'
-                            : selectedModelData?.name || `Select Model (${availableModels.length} available)`}
+                          {loadingModels 
+                            ? 'Loading models...' 
+                            : selectedModelData?.name || `Select Model (${availableModels.length} available)`
+                          }
                         </div>
-                        {selectedModelData?.pricing?.isFree && (
-                          <div className="text-green-400 text-xs">🆓 Free Model</div>
+                        {selectedModelData && (
+                          <div className={`text-xs ${isModelFreeByName(selectedModelData) ? 'text-green-400' : 'text-orange-400'}`}>
+                            {isModelFreeByName(selectedModelData) ? '🆓 FREE' : '💰 PAID'}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -787,11 +795,13 @@ const AiChatAgent = ({ onNewChatClick }) => {
                                 <div className="flex items-center justify-between">
                                   <h3 className="text-white font-medium">{model.name}</h3>
                                   <div className="flex items-center space-x-2">
-                                    {model.pricing?.isFree && (
-                                      <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">
-                                        FREE
-                                      </span>
-                                    )}
+                                    <span className={`px-2 py-1 text-xs rounded ${
+                                      isModelFreeByName(model)
+                                        ? 'bg-green-500/20 text-green-400'
+                                        : 'bg-orange-500/20 text-orange-400'
+                                    }`}>
+                                      {isModelFreeByName(model) ? 'FREE' : 'PAID'}
+                                    </span>
                                   </div>
                                 </div>
                                 <p className="text-slate-400 text-sm mt-1">{model.description}</p>
@@ -832,7 +842,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   <div className="mt-2 text-xs text-slate-500">
                     <div className="flex items-center justify-between">
                       <span>
-                        {availableModels.length} models shown • {openRouterModels.filter(m => m.pricing?.isFree).length} free
+                        {availableModels.length} models shown • {openRouterModels.filter(m => isModelFreeByName(m)).length} free
                         {showFreeOnly && ' (filtered)'}
                       </span>
                       {modelStats.lastUpdated && (
@@ -877,9 +887,9 @@ const AiChatAgent = ({ onNewChatClick }) => {
                     <div className="flex items-center space-x-2 text-sm">
                       <SafeIcon icon={FiCpu} className="text-purple-400" />
                       <span className="text-white">{selectedModelData.name}</span>
-                      {selectedModelData.pricing?.isFree && (
-                        <span className="text-green-400 text-xs">FREE</span>
-                      )}
+                      <span className={`text-xs ${isModelFreeByName(selectedModelData) ? 'text-green-400' : 'text-orange-400'}`}>
+                        {isModelFreeByName(selectedModelData) ? 'FREE' : 'PAID'}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -908,11 +918,14 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   <p className="text-slate-400 text-sm">
                     {messages.length} messages • {apiKey ? 'Using OpenRouter' : 'Demo mode'}
                     {selectedModelData && ` • ${selectedModelData.name}`}
-                    {selectedModelData?.pricing?.isFree && ' (Free)'}
+                    {selectedModelData && (
+                      <span className={`ml-1 ${isModelFreeByName(selectedModelData) ? 'text-green-400' : 'text-orange-400'}`}>
+                        ({isModelFreeByName(selectedModelData) ? 'Free' : 'Paid'})
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
-
               <div className="flex items-center space-x-2">
                 {currentSession && (
                   <button
@@ -949,7 +962,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   {apiKey && openRouterModels.length > 0 && (
                     <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 max-w-md mx-auto mt-4">
                       <p className="text-blue-400 text-sm">
-                        🎉 {openRouterModels.filter(m => m.pricing?.isFree).length} free models available via OpenRouter!
+                        🎉 {openRouterModels.filter(m => isModelFreeByName(m)).length} free models available via OpenRouter!
                         {!showFreeOnly && ` (${openRouterModels.length} total models)`}
                         {modelLoadTime && (
                           <span className="block mt-1 text-xs">
@@ -968,7 +981,9 @@ const AiChatAgent = ({ onNewChatClick }) => {
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`flex items-start space-x-4 max-w-[85%] ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                    <div className={`flex items-start space-x-4 max-w-[85%] ${
+                      message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                    }`}>
                       {/* Avatar */}
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                         message.type === 'user'
@@ -977,15 +992,15 @@ const AiChatAgent = ({ onNewChatClick }) => {
                           ? 'bg-yellow-500/20 border border-yellow-500/30'
                           : `bg-gradient-to-br ${selectedAgentData.color}`
                       }`}>
-                        <SafeIcon
+                        <SafeIcon 
                           icon={
-                            message.type === 'user'
-                              ? FiUser
-                              : message.type === 'system'
-                              ? FiSettings
+                            message.type === 'user' 
+                              ? FiUser 
+                              : message.type === 'system' 
+                              ? FiSettings 
                               : selectedAgentData.icon
-                          }
-                          className="text-white"
+                          } 
+                          className="text-white" 
                         />
                       </div>
 
@@ -1002,7 +1017,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
                             {message.content}
                           </div>
                         </div>
-
                         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-600/50">
                           <div className="flex items-center space-x-3">
                             <span className="text-slate-400 text-xs">
@@ -1025,9 +1039,9 @@ const AiChatAgent = ({ onNewChatClick }) => {
                               className="text-slate-400 hover:text-white transition-colors p-1 rounded"
                               title="Copy message"
                             >
-                              <SafeIcon
-                                icon={copiedMessageId === message.id ? FiCheck : FiCopy}
-                                className={`text-xs ${copiedMessageId === message.id ? 'text-green-400' : ''}`}
+                              <SafeIcon 
+                                icon={copiedMessageId === message.id ? FiCheck : FiCopy} 
+                                className={`text-xs ${copiedMessageId === message.id ? 'text-green-400' : ''}`} 
                               />
                             </button>
                           )}
@@ -1087,7 +1101,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   <SafeIcon icon={isLoading ? FiRefreshCw : FiSend} className={isLoading ? 'animate-spin' : ''} />
                 </button>
               </div>
-
               <div className="flex items-center justify-between mt-2">
                 <p className="text-slate-400 text-xs">
                   Press Enter to send, Shift+Enter for new line
@@ -1096,8 +1109,10 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   <p className="text-slate-500 text-xs">
                     Using OpenRouter API
                     {selectedModelData && ` • ${selectedModelData.name}`}
-                    {selectedModelData?.pricing?.isFree && (
-                      <span className="text-green-400 ml-1">FREE</span>
+                    {selectedModelData && (
+                      <span className={`ml-1 ${isModelFreeByName(selectedModelData) ? 'text-green-400' : 'text-orange-400'}`}>
+                        {isModelFreeByName(selectedModelData) ? 'FREE' : 'PAID'}
+                      </span>
                     )}
                     {modelLoadTime && (
                       <span className="text-blue-400 ml-1">• {modelLoadTime}ms ⚡</span>
@@ -1132,7 +1147,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                       <h5 className="text-white font-medium mb-1">OpenRouter Benefits</h5>
                       <ul className="text-slate-400 text-sm space-y-1">
                         <li>• Access 400+ AI models with one key</li>
-                        <li>• {openRouterModels.filter(m => m.pricing?.isFree).length}+ free models available!</li>
+                        <li>• {openRouterModels.filter(m => isModelFreeByName(m)).length}+ free models available!</li>
                         <li>• Includes GPT-4, Claude, Gemini, Llama</li>
                         <li>• Cost-effective with competitive pricing</li>
                         {modelLoadTime && (

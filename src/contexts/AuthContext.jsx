@@ -32,6 +32,7 @@ export const AuthProvider = ({ children }) => {
         } else {
           setSession(session);
           setUser(session?.user || null);
+          
           if (session?.user) {
             // Load profile and favorites in parallel but don't block loading
             Promise.all([
@@ -106,7 +107,8 @@ export const AuthProvider = ({ children }) => {
           setProfile({
             id: userId,
             full_name: '',
-            role: 'developer',
+            role: 'user', // Default role
+            status: 'active', // Default status
             experience: 'beginner',
             interests: [],
             preferences: {},
@@ -124,7 +126,8 @@ export const AuthProvider = ({ children }) => {
       setProfile({
         id: userId,
         full_name: '',
-        role: 'developer',
+        role: 'user',
+        status: 'active',
         experience: 'beginner',
         interests: [],
         preferences: {},
@@ -164,7 +167,8 @@ export const AuthProvider = ({ children }) => {
         .insert({
           id: userId,
           full_name: '',
-          role: 'developer',
+          role: 'user',
+          status: 'active',
           experience: 'beginner',
           interests: [],
           preferences: {},
@@ -179,7 +183,8 @@ export const AuthProvider = ({ children }) => {
         setProfile({
           id: userId,
           full_name: '',
-          role: 'developer',
+          role: 'user',
+          status: 'active',
           experience: 'beginner',
           interests: [],
           preferences: {},
@@ -196,7 +201,8 @@ export const AuthProvider = ({ children }) => {
       setProfile({
         id: userId,
         full_name: '',
-        role: 'developer',
+        role: 'user',
+        status: 'active',
         experience: 'beginner',
         interests: [],
         preferences: {},
@@ -255,14 +261,18 @@ export const AuthProvider = ({ children }) => {
     console.log('Updating profile with:', updates);
 
     // Validate role and experience values
-    const validRoles = ['user', 'developer', 'designer', 'manager', 'student', 'freelancer', 'admin', 'other'];
+    const validRoles = ['user', 'moderator', 'admin'];
     const validExperiences = ['beginner', 'intermediate', 'advanced'];
+    const validStatuses = ['active', 'inactive', 'blocked'];
 
     if (updates.role && !validRoles.includes(updates.role)) {
-      updates.role = 'developer';
+      updates.role = 'user';
     }
     if (updates.experience && !validExperiences.includes(updates.experience)) {
       updates.experience = 'beginner';
+    }
+    if (updates.status && !validStatuses.includes(updates.status)) {
+      updates.status = 'active';
     }
 
     const { data, error } = await supabase
@@ -291,17 +301,17 @@ export const AuthProvider = ({ children }) => {
     console.log('Completing onboarding with data:', onboardingData);
 
     const roleMapping = {
-      'developer': 'developer',
-      'designer': 'designer',
-      'manager': 'manager',
-      'student': 'student',
-      'freelancer': 'freelancer',
-      'other': 'other'
+      'developer': 'user',
+      'designer': 'user',
+      'manager': 'user',
+      'student': 'user',
+      'freelancer': 'user',
+      'other': 'user'
     };
 
     const updates = {
       full_name: onboardingData.fullName || '',
-      role: roleMapping[onboardingData.role] || 'developer',
+      role: roleMapping[onboardingData.role] || 'user',
       experience: onboardingData.experience || 'beginner',
       interests: onboardingData.interests || [],
       preferences: onboardingData.preferences || {},
@@ -334,6 +344,124 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Error tracking activity:', error);
     }
+  };
+
+  // Admin functions
+  const updateUserRole = async (targetUserId, newRole, currentUserRole) => {
+    if (!user || !profile) throw new Error('No user logged in');
+    if (profile.role !== 'admin') throw new Error('Only admins can change user roles');
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles_devbox_2024')
+        .update({ 
+          role: newRole,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', targetUserId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Log admin activity
+      await trackActivity('user_role_updated', null, {
+        target_user_id: targetUserId,
+        old_role: currentUserRole,
+        new_role: newRole,
+        admin_action: true
+      });
+
+      return data;
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      throw error;
+    }
+  };
+
+  const updateUserStatus = async (targetUserId, newStatus, currentStatus) => {
+    if (!user || !profile) throw new Error('No user logged in');
+    if (!['admin', 'moderator'].includes(profile.role)) {
+      throw new Error('Only admins and moderators can change user status');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles_devbox_2024')
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', targetUserId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Log admin activity
+      await trackActivity('user_status_updated', null, {
+        target_user_id: targetUserId,
+        old_status: currentStatus,
+        new_status: newStatus,
+        admin_action: true
+      });
+
+      return data;
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      throw error;
+    }
+  };
+
+  const deleteUser = async (targetUserId) => {
+    if (!user || !profile) throw new Error('No user logged in');
+    if (profile.role !== 'admin') throw new Error('Only admins can delete users');
+    if (targetUserId === user.id) throw new Error('Cannot delete your own account');
+
+    try {
+      // Delete user profile and related data
+      const { error } = await supabase
+        .from('profiles_devbox_2024')
+        .delete()
+        .eq('id', targetUserId);
+
+      if (error) throw error;
+
+      // Log admin activity
+      await trackActivity('user_deleted', null, {
+        target_user_id: targetUserId,
+        admin_action: true
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  };
+
+  // Check user permissions
+  const hasPermission = (permission) => {
+    if (!profile) return false;
+
+    const rolePermissions = {
+      admin: [
+        'tools.use', 'favorites.manage', 'profile.edit', 'activity.view',
+        'users.view', 'content.moderate', 'reports.view',
+        'users.manage', 'users.delete', 'roles.assign', 'system.settings',
+        'analytics.view', 'database.access'
+      ],
+      moderator: [
+        'tools.use', 'favorites.manage', 'profile.edit', 'activity.view',
+        'users.view', 'content.moderate', 'reports.view'
+      ],
+      user: [
+        'tools.use', 'favorites.manage', 'profile.edit', 'activity.view'
+      ]
+    };
+
+    const userPermissions = rolePermissions[profile.role] || rolePermissions.user;
+    return userPermissions.includes(permission);
   };
 
   const addToFavorites = async (toolId, toolName) => {
@@ -495,6 +623,7 @@ export const AuthProvider = ({ children }) => {
     if (!user) return null;
 
     console.log('Getting user settings for user:', user.id);
+
     const { data, error } = await supabase
       .from('user_settings_devbox_2024')
       .select('*')
@@ -529,7 +658,12 @@ export const AuthProvider = ({ children }) => {
     saveSnippet,
     getSnippets,
     updateUserSettings,
-    getUserSettings
+    getUserSettings,
+    // Admin functions
+    updateUserRole,
+    updateUserStatus,
+    deleteUser,
+    hasPermission
   };
 
   return (

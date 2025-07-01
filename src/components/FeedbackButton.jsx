@@ -12,9 +12,9 @@ const FeedbackButton = () => {
 
   return (
     <>
-      {/* Floating Feedback Button */}
+      {/* Floating Feedback Button - Moved down 100px from previous position */}
       <motion.div
-        className="fixed bottom-6 right-6 z-50"
+        className="fixed bottom-32 right-6 z-50"
         initial={{ opacity: 0, scale: 0.8, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 1 }}

@@ -134,7 +134,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
     } catch (error) {
       console.error('❌ Fast model loading failed:', error);
       setModelLoadError(`Failed to load models: ${error.message}`);
-
+      
       // Set minimal fallback for display
       const fallbackModels = [
         {
@@ -230,12 +230,9 @@ const AiChatAgent = ({ onNewChatClick }) => {
     }
   };
 
-  // Expose createNewSession to parent component
-  useEffect(() => {
-    if (onNewChatClick) {
-      window.createNewChatSession = () => createNewSession(selectedAgent);
-    }
-  }, [onNewChatClick, selectedAgent]);
+  const handleNewChatClick = () => {
+    createNewSession(selectedAgent);
+  };
 
   const loadSessionMessages = async (sessionId) => {
     try {
@@ -413,7 +410,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
         try {
           // Use selected model or fallback to agent's default
           const modelToUse = selectedModel || 'openai/gpt-3.5-turbo';
-
+          
           // Try real API call
           aiResponse = await aiService.sendMessage(
             apiKey,
@@ -479,7 +476,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
           .eq('session_id', currentSession.id);
 
         setMessages([]);
-
         if (user) {
           trackActivity('ai_chat_cleared', selectedAgent);
         }
@@ -500,7 +496,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
         setCurrentSession(null);
         setMessages([]);
       }
-
       await loadChatSessions();
     } catch (error) {
       console.error('Error deleting session:', error);
@@ -552,14 +547,25 @@ const AiChatAgent = ({ onNewChatClick }) => {
       <div className="flex gap-2.5 h-full">
         {/* Session Sidebar */}
         <div className="w-80 flex-shrink-0">
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 h-full p-2.5">
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700 h-full p-2.5 flex flex-col">
             {/* Sidebar Header */}
             <div className="p-4 border-b border-slate-700 flex items-center justify-between">
               <h3 className="text-white font-semibold">Chat Sessions</h3>
             </div>
 
+            {/* New Chat Button */}
+            <div className="p-4 border-b border-slate-700">
+              <button
+                onClick={handleNewChatClick}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white rounded-lg transition-colors font-medium"
+              >
+                <SafeIcon icon={FiPlus} className="text-sm" />
+                <span>New Chat</span>
+              </button>
+            </div>
+
             {/* Session List */}
-            <div className="p-4 space-y-2 max-h-96 overflow-y-auto">
+            <div className="flex-1 p-4 space-y-2 overflow-y-auto">
               {chatSessions.map((session) => (
                 <div
                   key={session.id}
@@ -757,10 +763,9 @@ const AiChatAgent = ({ onNewChatClick }) => {
                       <SafeIcon icon={loadingModels ? FiLoader : FiCpu} className={`text-purple-400 ${loadingModels ? 'animate-spin' : ''}`} />
                       <div className="text-left">
                         <div className="font-medium text-sm">
-                          {loadingModels 
-                            ? 'Loading models...' 
-                            : selectedModelData?.name || `Select Model (${availableModels.length} available)`
-                          }
+                          {loadingModels
+                            ? 'Loading models...'
+                            : selectedModelData?.name || `Select Model (${availableModels.length} available)`}
                         </div>
                         {selectedModelData && (
                           <div className={`text-xs ${isModelFreeByName(selectedModelData) ? 'text-green-400' : 'text-orange-400'}`}>
@@ -950,7 +955,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
                   <p className="text-slate-400 max-w-md mx-auto mb-6">
                     {selectedAgentData.description}. Ask questions or request assistance to get started!
                   </p>
-
                   {!apiKey && (
                     <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 max-w-md mx-auto">
                       <p className="text-yellow-400 text-sm">
@@ -958,7 +962,6 @@ const AiChatAgent = ({ onNewChatClick }) => {
                       </p>
                     </div>
                   )}
-
                   {apiKey && openRouterModels.length > 0 && (
                     <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 max-w-md mx-auto mt-4">
                       <p className="text-blue-400 text-sm">
@@ -981,9 +984,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`flex items-start space-x-4 max-w-[85%] ${
-                      message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-                    }`}>
+                    <div className={`flex items-start space-x-4 max-w-[85%] ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                       {/* Avatar */}
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                         message.type === 'user'
@@ -992,15 +993,9 @@ const AiChatAgent = ({ onNewChatClick }) => {
                           ? 'bg-yellow-500/20 border border-yellow-500/30'
                           : `bg-gradient-to-br ${selectedAgentData.color}`
                       }`}>
-                        <SafeIcon 
-                          icon={
-                            message.type === 'user' 
-                              ? FiUser 
-                              : message.type === 'system' 
-                              ? FiSettings 
-                              : selectedAgentData.icon
-                          } 
-                          className="text-white" 
+                        <SafeIcon
+                          icon={message.type === 'user' ? FiUser : message.type === 'system' ? FiSettings : selectedAgentData.icon}
+                          className="text-white"
                         />
                       </div>
 
@@ -1039,10 +1034,7 @@ const AiChatAgent = ({ onNewChatClick }) => {
                               className="text-slate-400 hover:text-white transition-colors p-1 rounded"
                               title="Copy message"
                             >
-                              <SafeIcon 
-                                icon={copiedMessageId === message.id ? FiCheck : FiCopy} 
-                                className={`text-xs ${copiedMessageId === message.id ? 'text-green-400' : ''}`} 
-                              />
+                              <SafeIcon icon={copiedMessageId === message.id ? FiCheck : FiCopy} className={`text-xs ${copiedMessageId === message.id ? 'text-green-400' : ''}`} />
                             </button>
                           )}
                         </div>
@@ -1096,11 +1088,12 @@ const AiChatAgent = ({ onNewChatClick }) => {
                 <button
                   onClick={sendMessage}
                   disabled={!inputMessage.trim() || isLoading}
-                  className="p-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                  className="h-12 px-4 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center"
                 >
                   <SafeIcon icon={isLoading ? FiRefreshCw : FiSend} className={isLoading ? 'animate-spin' : ''} />
                 </button>
               </div>
+
               <div className="flex items-center justify-between mt-2">
                 <p className="text-slate-400 text-xs">
                   Press Enter to send, Shift+Enter for new line

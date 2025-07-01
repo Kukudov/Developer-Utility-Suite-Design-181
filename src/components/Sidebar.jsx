@@ -6,20 +6,27 @@ import SafeIcon from '../common/SafeIcon';
 import UserMenu from './auth/UserMenu';
 import { useAuth } from '../contexts/AuthContext';
 
-const { FiHome, FiTool, FiBookOpen, FiCode, FiCpu, FiRefreshCw, FiUser, FiMessageSquare, FiPlus } = FiIcons;
+const { FiHome, FiTool, FiBookOpen, FiCode, FiCpu, FiRefreshCw, FiUser, FiMessageSquare, FiShield, FiUsers, FiPlay } = FiIcons;
 
-const Sidebar = ({ onSignInClick, onSettingsClick, onNewChatClick }) => {
+const Sidebar = ({ onSignInClick, onSettingsClick }) => {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   const menuItems = [
     { path: '/', icon: FiHome, label: 'Dashboard' },
+    { path: '/get-started', icon: FiPlay, label: 'Get Started' },
     { path: '/ai-chat', icon: FiMessageSquare, label: 'AI Chat Agent' },
     { path: '/utilities', icon: FiTool, label: 'Utilities' },
     { path: '/cheatsheets', icon: FiBookOpen, label: 'Cheat Sheets' },
     { path: '/snippets', icon: FiCode, label: 'Code Snippets' },
     { path: '/generators', icon: FiCpu, label: 'Generators' },
     { path: '/converters', icon: FiRefreshCw, label: 'Converters' },
+  ];
+
+  // Admin menu items (only shown to admins)
+  const adminMenuItems = [
+    { path: '/admin', icon: FiShield, label: 'Admin Dashboard' },
+    { path: '/admin/users', icon: FiUsers, label: 'User Management' },
   ];
 
   return (
@@ -47,19 +54,6 @@ const Sidebar = ({ onSignInClick, onSettingsClick, onNewChatClick }) => {
         </div>
       </div>
 
-      {/* New Chat Button - Only show on AI Chat page */}
-      {location.pathname === '/ai-chat' && (
-        <div className="p-4 border-b border-slate-700">
-          <button
-            onClick={onNewChatClick}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white rounded-lg transition-colors font-medium"
-          >
-            <SafeIcon icon={FiPlus} className="text-sm" />
-            <span>New Chat</span>
-          </button>
-        </div>
-      )}
-
       {/* Navigation */}
       <nav className="flex-1 mt-8 px-4">
         <div className="space-y-2">
@@ -85,6 +79,39 @@ const Sidebar = ({ onSignInClick, onSettingsClick, onNewChatClick }) => {
               </Link>
             );
           })}
+
+          {/* Admin Section */}
+          {user && profile?.role === 'admin' && (
+            <>
+              <div className="pt-6 pb-2">
+                <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-wider px-3">
+                  Administration
+                </h3>
+              </div>
+              {adminMenuItems.map((item) => {
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center space-x-3 px-3 py-3 rounded-lg transition-all duration-200 group ${
+                      isActive
+                        ? 'bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                    }`}
+                  >
+                    <SafeIcon
+                      icon={item.icon}
+                      className={`text-lg ${
+                        isActive ? 'text-white' : 'group-hover:text-white'
+                      }`}
+                    />
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </div>
       </nav>
 
